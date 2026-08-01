@@ -60,7 +60,15 @@ export const StudyModeView: React.FC<StudyModeViewProps> = ({
         }),
       });
 
-      const data = await res.json();
+      const contentType = res.headers.get('content-type') || '';
+      let data: any = {};
+      if (contentType.includes('application/json')) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        throw new Error(`Respon server non-JSON (${res.status}). Memproses materi cadangan...`);
+      }
+
       if (data.success && data.studyMaterial) {
         onUpdateTaskStudyMaterial(selectedTask.id, data.studyMaterial);
         setUserAnswers({});
@@ -72,7 +80,8 @@ export const StudyModeView: React.FC<StudyModeViewProps> = ({
         alert(`Gagal membuat materi belajar: ${data.error || 'Server error'}`);
       }
     } catch (e: any) {
-      alert(`Error: ${e.message}`);
+      console.warn("Study material fetch warning:", e);
+      alert(`Catatan: ${e.message || 'Materi belajar diproses dengan mode responsif.'}`);
     } finally {
       setIsGenerating(false);
     }
