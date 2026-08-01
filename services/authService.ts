@@ -1,14 +1,32 @@
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User } from 'firebase/auth';
 
+// Helper to clean Firebase config values from env variables
+const getCleanEnv = (val: string | undefined): string => {
+  if (!val) return '';
+  return val.trim().replace(/^["']|["']$/g, '');
+};
+
+const rawApiKey = getCleanEnv(import.meta.env?.VITE_FIREBASE_API_KEY);
+const rawAuthDomain = getCleanEnv(import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN);
+const rawProjectId = getCleanEnv(import.meta.env?.VITE_FIREBASE_PROJECT_ID) || "tugasin-app";
+
+const cleanAuthDomain = (domain: string, projId: string): string => {
+  let cleaned = domain.replace(/^https?:\/\//i, '').replace(/^\/+|\/+$/g, '').trim();
+  if (!cleaned || cleaned.startsWith('.') || cleaned === 'firebaseapp.com' || !cleaned.includes('.')) {
+    return `${projId}.firebaseapp.com`;
+  }
+  return cleaned;
+};
+
 // Firebase Config loaded from VITE_ env variables, firebase-applet-config.json if present, or fallback
 let firebaseConfig: any = {
-  apiKey: import.meta.env?.VITE_FIREBASE_API_KEY || "AIzaSyDummyKeyForWorkspaceAuth",
-  authDomain: import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN || "tugasin-app.firebaseapp.com",
-  projectId: import.meta.env?.VITE_FIREBASE_PROJECT_ID || "tugasin-app",
-  storageBucket: import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET || "tugasin-app.appspot.com",
-  messagingSenderId: import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID || "1234567890",
-  appId: import.meta.env?.VITE_FIREBASE_APP_ID || "1:1234567890:web:abcdef123456"
+  apiKey: rawApiKey || "AIzaSyDummyKeyForWorkspaceAuth",
+  authDomain: cleanAuthDomain(rawAuthDomain, rawProjectId),
+  projectId: rawProjectId,
+  storageBucket: getCleanEnv(import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET) || `${rawProjectId}.appspot.com`,
+  messagingSenderId: getCleanEnv(import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID) || "1234567890",
+  appId: getCleanEnv(import.meta.env?.VITE_FIREBASE_APP_ID) || "1:1234567890:web:abcdef123456"
 };
 
 try {
