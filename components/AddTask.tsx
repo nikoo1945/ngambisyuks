@@ -57,12 +57,71 @@ export const AddTask: React.FC<AddTaskProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const ocrInputRef = useRef<HTMLInputElement>(null);
 
-  // File Upload Handlers
-  const handleFiles = (files: FileList | File[]) => {
-    Array.from(files).forEach((file) => {
+  // Helper: Compress images to prevent huge base64 dataUrl crash
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
       const reader = new FileReader();
       reader.onload = (e) => {
-        const dataUrl = e.target?.result as string;
+        const img = new Image();
+        img.onload = () => {
+          const MAX_WIDTH = 1200;
+          const MAX_HEIGHT = 1200;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > MAX_WIDTH || height > MAX_HEIGHT) {
+            if (width > height) {
+              height = Math.round((height * MAX_WIDTH) / width);
+              width = MAX_WIDTH;
+            } else {
+              width = Math.round((width * MAX_HEIGHT) / height);
+              height = MAX_HEIGHT;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', 0.85));
+          } else {
+            resolve((e.target?.result as string) || '');
+          }
+        };
+        img.onerror = () => resolve((e.target?.result as string) || '');
+        img.src = (e.target?.result as string) || '';
+      };
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const readFileAsDataUrl = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve((e.target?.result as string) || '');
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // File Upload Handlers
+  const handleFiles = async (files: FileList | File[]) => {
+    const fileArray = Array.from(files);
+    for (const file of fileArray) {
+      try {
+        let dataUrl = '';
+        if (file.type?.startsWith('image/')) {
+          dataUrl = await compressImage(file);
+        } else {
+          dataUrl = await readFileAsDataUrl(file);
+          if (dataUrl.length > 2 * 1024 * 1024) {
+            dataUrl = dataUrl.substring(0, 200) + '...[truncated]';
+          }
+        }
+
         const newAttachment: TaskAttachment = {
           id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
           name: file.name,
@@ -71,9 +130,10 @@ export const AddTask: React.FC<AddTaskProps> = ({
           dataUrl: dataUrl,
         };
         setAttachments((prev) => [...prev, newAttachment]);
-      };
-      reader.readAsDataURL(file);
-    });
+      } catch (err) {
+        console.error('Error handling file attachment:', err);
+      }
+    }
   };
 
   const getFallbackMimeType = (filename: string) => {
@@ -106,7 +166,7 @@ export const AddTask: React.FC<AddTaskProps> = ({
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       handleFiles(e.dataTransfer.files);
     }
   };
@@ -118,50 +178,57 @@ export const AddTask: React.FC<AddTaskProps> = ({
 
     setIsScanningOCR(true);
     try {
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        const base64Data = event.target?.result as string;
+      let base64Data = '';
+      if (file.type?.startsWith('image/')) {
+        base64Data = await compressImage(file);
+      } else {
+        base64Data = await readFileAsDataUrl(file);
+      }
 
-        // Also add scanned file to attachments
-        const newAttachment: TaskAttachment = {
-          id: `att_ocr_${Date.now()}`,
-          name: file.name,
-          size: file.size,
-          type: file.type || 'image/jpeg',
-          dataUrl: base64Data,
-        };
-        setAttachments((prev) => [...prev, newAttachment]);
+      if (!base64Data) {
+        alert('Gagal membaca file gambar. Silakan coba file lain.');
+        return;
+      }
 
-        const res = await fetch('/api/ai/ocr-task', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            base64Data,
-            mimeType: file.type || 'image/jpeg',
-            userNotes: deskripsi,
-          }),
-        });
-
-        const data = await res.json();
-        if (data.success && data.result) {
-          const r = data.result;
-          if (r.judul) setJudul(r.judul);
-          if (r.deskripsi) setDeskripsi(r.deskripsi);
-          if (r.kategori) setKategori(r.kategori as TaskCategory);
-          if (r.priority) setPriority(r.priority as TaskPriority);
-          if (r.suggestedDeadlineHours) {
-            const d = new Date();
-            d.setHours(d.getHours() + r.suggestedDeadlineHours);
-            setDeadline(d.toISOString().slice(0, 16));
-          }
-          alert(`✨ Teks Lembar Tugas Berhasil Dipindai dengan Gemini Vision OCR!\n\nJudul & Deskripsi telah terisi otomatis.`);
-        } else {
-          alert(`Gagal memindai OCR: ${data.error || 'Pastikan file berisi teks/foto tugas yang jelas.'}`);
-        }
+      // Also add scanned file to attachments
+      const newAttachment: TaskAttachment = {
+        id: `att_ocr_${Date.now()}`,
+        name: file.name,
+        size: file.size,
+        type: file.type || 'image/jpeg',
+        dataUrl: base64Data,
       };
-      reader.readAsDataURL(file);
+      setAttachments((prev) => [...prev, newAttachment]);
+
+      const res = await fetch('/api/ai/ocr-task', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          base64Data,
+          mimeType: file.type || 'image/jpeg',
+          userNotes: deskripsi,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success && data.result) {
+        const r = data.result;
+        if (r.judul) setJudul(r.judul);
+        if (r.deskripsi) setDeskripsi(r.deskripsi);
+        if (r.kategori) setKategori(r.kategori as TaskCategory);
+        if (r.priority) setPriority(r.priority as TaskPriority);
+        if (r.suggestedDeadlineHours) {
+          const d = new Date();
+          d.setHours(d.getHours() + r.suggestedDeadlineHours);
+          setDeadline(d.toISOString().slice(0, 16));
+        }
+        alert(`✨ Teks Lembar Tugas Berhasil Dipindai dengan Gemini Vision OCR!\n\nJudul & Deskripsi telah terisi otomatis.`);
+      } else {
+        alert(`Gagal memindai OCR: ${data.error || 'Pastikan file berisi teks/foto tugas yang jelas.'}`);
+      }
     } catch (err: any) {
-      alert(`OCR Scan Error: ${err.message}`);
+      console.error('OCR Scan error:', err);
+      alert(`OCR Scan Error: ${err.message || 'Gagal memproses file'}`);
     } finally {
       setIsScanningOCR(false);
       if (ocrInputRef.current) ocrInputRef.current.value = '';
@@ -440,7 +507,7 @@ export const AddTask: React.FC<AddTaskProps> = ({
                   className="flex items-center justify-between gap-2 p-2.5 bg-amber-50 border-2 border-[#1E293B] rounded-xl shadow-[2px_2px_0px_0px_#1e293b]"
                 >
                   <div className="flex items-center gap-2 overflow-hidden">
-                    {att.type.startsWith('image/') && att.dataUrl ? (
+                    {att.type?.startsWith('image/') && att.dataUrl && !att.dataUrl.includes('truncated') ? (
                       <img
                         src={att.dataUrl}
                         alt={att.name}

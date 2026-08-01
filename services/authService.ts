@@ -19,20 +19,33 @@ const cleanAuthDomain = (domain: string, projId: string): string => {
   return cleaned;
 };
 
-// Firebase Config loaded from VITE_ env variables, firebase-applet-config.json if present, or fallback
+// Firebase Config loaded with exact defaults, env variables, or firebase-applet-config.json
+const DEFAULT_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDtrZIf1tvZnmUM1yU-l59R6E4sOBrsHBU",
+  authDomain: "tugasin-app.firebaseapp.com",
+  projectId: "tugasin-app",
+  storageBucket: "tugasin-app.firebasestorage.app",
+  messagingSenderId: "937004057977",
+  appId: "1:937004057977:web:f2f57d09a565ec07619ba8"
+};
+
 let firebaseConfig: any = {
-  apiKey: rawApiKey || "AIzaSyDummyKeyForWorkspaceAuth",
-  authDomain: cleanAuthDomain(rawAuthDomain, rawProjectId),
-  projectId: rawProjectId,
-  storageBucket: getCleanEnv(import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET) || `${rawProjectId}.appspot.com`,
-  messagingSenderId: getCleanEnv(import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID) || "1234567890",
-  appId: getCleanEnv(import.meta.env?.VITE_FIREBASE_APP_ID) || "1:1234567890:web:abcdef123456"
+  apiKey: rawApiKey || DEFAULT_FIREBASE_CONFIG.apiKey,
+  authDomain: rawAuthDomain ? cleanAuthDomain(rawAuthDomain, rawProjectId) : DEFAULT_FIREBASE_CONFIG.authDomain,
+  projectId: rawProjectId || DEFAULT_FIREBASE_CONFIG.projectId,
+  storageBucket: getCleanEnv(import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET) || DEFAULT_FIREBASE_CONFIG.storageBucket,
+  messagingSenderId: getCleanEnv(import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID) || DEFAULT_FIREBASE_CONFIG.messagingSenderId,
+  appId: getCleanEnv(import.meta.env?.VITE_FIREBASE_APP_ID) || DEFAULT_FIREBASE_CONFIG.appId
 };
 
 try {
   const configModule = require('../firebase-applet-config.json');
-  if (configModule && configModule.apiKey && !configModule.apiKey.includes('DummyKey')) {
-    firebaseConfig = configModule;
+  if (configModule && configModule.apiKey) {
+    firebaseConfig = {
+      ...firebaseConfig,
+      ...configModule,
+      authDomain: cleanAuthDomain(configModule.authDomain || firebaseConfig.authDomain, configModule.projectId || firebaseConfig.projectId)
+    };
   }
 } catch (e) {
   // Config json fallback

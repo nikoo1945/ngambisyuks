@@ -131,7 +131,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                     key={att.id}
                     className="p-2.5 bg-[#FAF8F5] border-2 border-[#1E293B] rounded-xl flex items-center gap-2 shadow-[2px_2px_0px_0px_#1e293b]"
                   >
-                    {att.type.startsWith('image/') && att.dataUrl ? (
+                    {att.type?.startsWith('image/') && att.dataUrl && !att.dataUrl.includes('truncated') ? (
                       <img src={att.dataUrl} alt={att.name} className="w-10 h-10 object-cover rounded-lg border border-[#1E293B]" />
                     ) : (
                       <div className="w-10 h-10 bg-amber-200 border border-[#1E293B] rounded-lg flex items-center justify-center font-bold text-xs">

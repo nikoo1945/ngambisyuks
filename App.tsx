@@ -93,13 +93,33 @@ export const App: React.FC = () => {
   const [isCronRunning, setIsCronRunning] = useState(false);
   const [generatingDraftId, setGeneratingDraftId] = useState<string | null>(null);
 
-  // Save state to localStorage
+  // Save state to localStorage safely
   useEffect(() => {
-    localStorage.setItem('tugasin_tasks', JSON.stringify(tasks));
+    try {
+      localStorage.setItem('tugasin_tasks', JSON.stringify(tasks));
+    } catch (e) {
+      console.warn('LocalStorage quota exceeded, trimming large dataUrls:', e);
+      try {
+        const cleanTasks = tasks.map(t => ({
+          ...t,
+          attachments: t.attachments?.map(a => ({
+            ...a,
+            dataUrl: a.dataUrl && a.dataUrl.length < 50000 ? a.dataUrl : undefined
+          }))
+        }));
+        localStorage.setItem('tugasin_tasks', JSON.stringify(cleanTasks));
+      } catch (err) {
+        console.error('Failed to save tasks to localStorage:', err);
+      }
+    }
   }, [tasks]);
 
   useEffect(() => {
-    localStorage.setItem('tugasin_settings', JSON.stringify(settings));
+    try {
+      localStorage.setItem('tugasin_settings', JSON.stringify(settings));
+    } catch (e) {
+      console.error('Failed to save settings to localStorage:', e);
+    }
   }, [settings]);
 
   // Auth Listener
