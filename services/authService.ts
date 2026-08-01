@@ -1,31 +1,44 @@
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User } from 'firebase/auth';
 
-// Firebase Config loaded from firebase-applet-config.json if present, or fallback
+// Firebase Config loaded from VITE_ env variables, firebase-applet-config.json if present, or fallback
 let firebaseConfig: any = {
-  apiKey: "AIzaSyDummyKeyForWorkspaceAuth",
-  authDomain: "tugasin-app.firebaseapp.com",
-  projectId: "tugasin-app",
-  storageBucket: "tugasin-app.appspot.com",
-  messagingSenderId: "1234567890",
-  appId: "1:1234567890:web:abcdef123456"
+  apiKey: import.meta.env?.VITE_FIREBASE_API_KEY || "AIzaSyDummyKeyForWorkspaceAuth",
+  authDomain: import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN || "tugasin-app.firebaseapp.com",
+  projectId: import.meta.env?.VITE_FIREBASE_PROJECT_ID || "tugasin-app",
+  storageBucket: import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET || "tugasin-app.appspot.com",
+  messagingSenderId: import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID || "1234567890",
+  appId: import.meta.env?.VITE_FIREBASE_APP_ID || "1:1234567890:web:abcdef123456"
 };
 
 try {
-  // Dynamically require or import if available
   const configModule = require('../firebase-applet-config.json');
-  if (configModule) {
+  if (configModule && configModule.apiKey && !configModule.apiKey.includes('DummyKey')) {
     firebaseConfig = configModule;
   }
 } catch (e) {
   // Config json fallback
 }
 
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-export const auth = getAuth(app);
+export const isFirebaseConfigured = (): boolean => {
+  return !!(
+    firebaseConfig.apiKey &&
+    !firebaseConfig.apiKey.includes('DummyKey') &&
+    firebaseConfig.apiKey.length > 20
+  );
+};
+
+let app: any;
+let auth: any;
+
+try {
+  app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+  auth = getAuth(app);
+} catch (err) {
+  console.warn('Firebase init warning:', err);
+}
 
 const provider = new GoogleAuthProvider();
-// Add required Google Workspace scopes
 provider.addScope('https://www.googleapis.com/auth/spreadsheets');
 provider.addScope('https://www.googleapis.com/auth/calendar.events');
 provider.addScope('https://www.googleapis.com/auth/documents');
@@ -38,10 +51,15 @@ export const initAuth = (
   onAuthSuccess?: (user: User, token: string) => void,
   onAuthFailure?: () => void
 ) => {
-  return onAuthStateChanged(auth, async (user: User | null) => {
-    if (user) {
+  if (!auth) {
+    if (onAuthFailure) onAuthFailure();
+    return () => {};
+  }
+
+  return onAuthStateChanged(auth, async (currentUser: User | null) => {
+    if (currentUser) {
       if (cachedAccessToken) {
-        if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
+        if (onAuthSuccess) onAuthSuccess(currentUser, cachedAccessToken);
       } else if (!isSigningIn) {
         if (onAuthFailure) onAuthFailure();
       }
@@ -52,7 +70,20 @@ export const initAuth = (
   });
 };
 
-export const googleSignIn = async (): Promise<{ user: User; accessToken: string } | null> => {
+export const googleSignIn = async (): Promise<{ user: User; accessToken: string; isDemo?: boolean } | null> => {
+  if (!isFirebaseConfigured()) {
+    console.warn('Firebase API key dummy or missing. Falling back to Demo Workspace mode.');
+    cachedAccessToken = 'demo-workspace-access-token';
+    const mockUser = {
+      uid: 'demo-google-user-123',
+      displayName: 'Pengguna Google (Demo Mode)',
+      email: 'user@gmail.com',
+      photoURL: 'https://api.dicebear.com/7.x/bottts/svg?seed=Tugasin'
+    } as unknown as User;
+    
+    return { user: mockUser, accessToken: cachedAccessToken, isDemo: true };
+  }
+
   try {
     isSigningIn = true;
     const result = await signInWithPopup(auth, provider);
@@ -62,9 +93,25 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
     }
 
     cachedAccessToken = credential.accessToken;
-    return { user: result.user, accessToken: cachedAccessToken };
+    return { user: result.user, accessToken: cachedAccessToken, isDemo: false };
   } catch (error: any) {
     console.error('Sign in error:', error);
+    if (
+      error?.code === 'auth/api-key-not-valid' ||
+      error?.code === 'auth/invalid-api-key' ||
+      error?.message?.includes('api-key-not-valid')
+    ) {
+      // Automatic fallback to Demo mode if API key fails validation in Vercel
+      console.warn('Invalid Firebase API key on Vercel. Enabling Demo Workspace Mode.');
+      cachedAccessToken = 'demo-workspace-access-token';
+      const mockUser = {
+        uid: 'demo-google-user-123',
+        displayName: 'Pengguna Google Workspace (Demo)',
+        email: 'user@gmail.com',
+        photoURL: 'https://api.dicebear.com/7.x/bottts/svg?seed=Tugasin'
+      } as unknown as User;
+      return { user: mockUser, accessToken: cachedAccessToken, isDemo: true };
+    }
     throw error;
   } finally {
     isSigningIn = false;
@@ -76,6 +123,11 @@ export const getAccessToken = async (): Promise<string | null> => {
 };
 
 export const logout = async () => {
-  await auth.signOut();
+  if (auth) {
+    try {
+      await auth.signOut();
+    } catch {}
+  }
   cachedAccessToken = null;
 };
+
