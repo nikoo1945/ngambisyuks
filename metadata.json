@@ -1,0 +1,8 @@
+{
+  "name": "Tugasin",
+  "description": "Aplikasi Pengingat Tugas + Auto-Pengerjaan AI (Google Workspace & WhatsApp Fonnte)",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
