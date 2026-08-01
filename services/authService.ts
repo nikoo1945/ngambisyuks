@@ -90,16 +90,9 @@ export const initAuth = (
 
 export const googleSignIn = async (): Promise<{ user: User; accessToken: string; isDemo?: boolean } | null> => {
   if (!isFirebaseConfigured()) {
-    console.warn('Firebase API key dummy or missing. Falling back to Demo Workspace mode.');
-    cachedAccessToken = 'demo-workspace-access-token';
-    const mockUser = {
-      uid: 'demo-google-user-123',
-      displayName: 'Pengguna Google (Demo Mode)',
-      email: 'user@gmail.com',
-      photoURL: 'https://api.dicebear.com/7.x/bottts/svg?seed=Tugasin'
-    } as unknown as User;
-    
-    return { user: mockUser, accessToken: cachedAccessToken, isDemo: true };
+    throw new Error(
+      'Firebase API Key belum terpasang di Vercel. Silakan tambahkan VITE_FIREBASE_API_KEY dan VITE_FIREBASE_AUTH_DOMAIN di Vercel -> Project Settings -> Environment Variables, lalu lakukan REDEPLOY pada Vercel.'
+    );
   }
 
   try {
@@ -114,22 +107,7 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string;
     return { user: result.user, accessToken: cachedAccessToken, isDemo: false };
   } catch (error: any) {
     console.error('Sign in error:', error);
-    if (
-      error?.code === 'auth/api-key-not-valid' ||
-      error?.code === 'auth/invalid-api-key' ||
-      error?.message?.includes('api-key-not-valid')
-    ) {
-      // Automatic fallback to Demo mode if API key fails validation in Vercel
-      console.warn('Invalid Firebase API key on Vercel. Enabling Demo Workspace Mode.');
-      cachedAccessToken = 'demo-workspace-access-token';
-      const mockUser = {
-        uid: 'demo-google-user-123',
-        displayName: 'Pengguna Google Workspace (Demo)',
-        email: 'user@gmail.com',
-        photoURL: 'https://api.dicebear.com/7.x/bottts/svg?seed=Tugasin'
-      } as unknown as User;
-      return { user: mockUser, accessToken: cachedAccessToken, isDemo: true };
-    }
+    // Return real error message so user can see what Firebase error occurred
     throw error;
   } finally {
     isSigningIn = false;

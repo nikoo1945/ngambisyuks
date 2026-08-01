@@ -123,11 +123,7 @@ export const App: React.FC = () => {
       const res = await googleSignIn();
       if (res) {
         setUser(res.user);
-        if (res.isDemo) {
-          alert(`Berhasil terhubung dalam Mode Demo Google Workspace (${res.user.displayName}). Semua fungsi pengerjaan & pembuatan draft tetap aktif!`);
-        } else {
-          alert(`Berhasil terhubung dengan Google Workspace (${res.user.displayName || res.user.email})`);
-        }
+        alert(`Berhasil terhubung dengan Google Workspace (${res.user.displayName || res.user.email})`);
       }
     } catch (e: any) {
       console.error('Sign in error:', e);
